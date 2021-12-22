@@ -13,26 +13,40 @@ class Transformer(Module):
     def __init__(self, d_model: int = 512, nhead: int = 8, num_encoder_layers: int = 6,
                  num_decoder_layers: int = 6, dim_feedforward: int = 2048, dropout: float = 0.1,
                  layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
-                 device=None, dtype=None):
-        factory_kwargs = {'device': device, 'dtype': dtype}
+                 device=None):
         # norm-first ignored.
         super(Transformer, self).__init__()
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout,
                                                 layer_norm_eps, batch_first, norm_first,
-                                                **factory_kwargs)
-        encoder_norm = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+                                                device=device)
+        encoder_norm = LayerNorm(d_model, eps=layer_norm_eps, device=device)
         self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
 
+        decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout,
+                                                layer_norm_eps, batch_first, norm_first,
+                                                device=device)
+        decoder_norm = LayerNorm(d_model, eps=layer_norm_eps, device=device)
+        self.decoder = TransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm)
 
         self.d_model = d_model
         self.nhead = nhead
         self.batch_first = batch_first
 
+    def forward(self, src: Tensor, tgt: Tensor, src_mask: Optional[Tensor] = None, tgt_mask: Optional[Tensor] = None,
+                memory_mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None,
+                tgt_key_padding_mask: Optional[Tensor] = None, memory_key_padding_mask: Optional[Tensor] = None) -> Tensor:
+
+        memory = self.encoder(src, mask=src_mask, src_key_padding_mask=src_key_padding_mask)
+        output = self.decoder(tgt, memory, tgt_mask=tgt_mask, memory_mask=memory_mask,
+                              tgt_key_padding_mask=tgt_key_padding_mask,
+                              memory_key_padding_mask=memory_key_padding_mask)
+        return output
+
 
 class TransformerEncoder(Module):
     def __init__(self, encoder_layer, num_layers, norm=None):
         super(TransformerEncoder, self).__init__()
-        self_layers = _get_clones(encoder_layer, num_layers)
+        self.layers = _get_clones(encoder_layer, num_layers)
         self.num_layers = num_layers
         self.norm = norm
 
@@ -93,19 +107,17 @@ class TransformerDecoder(Module):
 class TransformerEncoderLayer(Module):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1,
                  layer_norm_eps=1e-5, batch_first=False, norm_first=False,
-                 device=None, dtype=None) -> None:
-        factory_kwargs = {'device': device, 'dtype': dtype}
+                 device=None) -> None:
         super(TransformerEncoderLayer, self).__init__()
-        self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
-                                            **factory_kwargs)
+        self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first)
         # Implementation of Feedforward model
-        self.linear1 = Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.linear1 = Linear(d_model, dim_feedforward, device=device)
         self.dropout = Dropout(dropout)
-        self.linear2 = Linear(dim_feedforward, d_model, **factory_kwargs)
+        self.linear2 = Linear(dim_feedforward, d_model, device=device)
 
         self.norm_first = norm_first
-        self.norm1 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = LayerNorm(d_model, eps=layer_norm_eps, device=device)
+        self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, device=device)
         self.dropout1 = Dropout(dropout)
         self.dropout2 = Dropout(dropout)
 
@@ -142,19 +154,17 @@ class TransformerDecoderLayer(Module):
                  device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(TransformerDecoderLayer, self).__init__()
-        self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
-                                            **factory_kwargs)
-        self.multihead_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
-                                                 **factory_kwargs)
+        self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first)
+        self.multihead_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first)
         # Implementation of Feedforward model
-        self.linear1 = Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.linear1 = Linear(d_model, dim_feedforward, device=device)
         self.dropout = Dropout(dropout)
-        self.linear2 = Linear(dim_feedforward, d_model, **factory_kwargs)
+        self.linear2 = Linear(dim_feedforward, d_model, device=device)
 
         self.norm_first = norm_first
-        self.norm1 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.norm3 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = LayerNorm(d_model, eps=layer_norm_eps, device=device)
+        self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, device=device)
+        self.norm3 = LayerNorm(d_model, eps=layer_norm_eps, device=device)
         self.dropout1 = Dropout(dropout)
         self.dropout2 = Dropout(dropout)
         self.dropout3 = Dropout(dropout)
@@ -166,9 +176,9 @@ class TransformerDecoderLayer(Module):
 
         x = tgt
         if self.norm_first:
-            x = x + self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask)
-            x = x + self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask)
-            x = x + self._ff_block(self.norm3(x))
+            x += self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask)
+            x += self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask)
+            x += self._ff_block(self.norm3(x))
         else:
             x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask))
             x = self.norm2(x + self._mha_block(x, memory, memory_mask, memory_key_padding_mask))
@@ -196,7 +206,7 @@ class TransformerDecoderLayer(Module):
 
     # feed forward block
     def _ff_block(self, x: Tensor) -> Tensor:
-        x = self.linear2(self.dropout(self.activation(self.linear1(x))))
+        x = self.linear2(self.dropout(F.relu(self.linear1(x))))
         return self.dropout3(x)
 
 
@@ -208,20 +218,23 @@ def _scaled_dot_product_attention(
     dropout_p: float = 0.0,
 ) -> Tuple[Tensor, Tensor]:
 
-    bs, tgt_len, E = q.shape
+    bsz, tgt_len, E = q.shape
     q = q / math.sqrt(E)
 
     # (B, Nt, E) x (B, E, Ns) -> (B, Nt, Ns)
+    # (bs * num_heads, tgt_len, embed_dim) x (bs * num_heads, embed_dim, src_len) -> (bs * num_heads, tgt_len, src_len)
     attn = torch.bmm(q, k.transpose(-2, -1))
 
-    # Check attn_mask
     if attn_mask is not None:
-        attn += attn_mask
+        # attn += attn_mask
+        attn = attn.masked_fill(attn_mask, float(-1e9))
 
     attn = torch.softmax(attn, dim=-1)
+    # why over dim=-1? because we compute the importance of src (dim=-1) on tgt (dim=-2).
     if dropout_p > 0.0:
         attn = F.dropout(attn, p=dropout_p)
     # (B, Nt, Ns) x (B, Ns, E) -> (B, Nt, E)
+    # (bs * num_heads, tgt_len, src_len) x (bs * num_heads, src_len, embed_dim) -> (bs * num_heads, tgt_len, embed_dim)
     output = torch.bmm(attn, v)
     return output, attn
 
@@ -254,16 +267,23 @@ class MultiheadAttention(Module):
         self.dropout_p = dropout
         self.layer_norm = nn.LayerNorm(self.embed_dim, eps=1e-6)
 
+    def forward(self, query: Tensor, key: Tensor, value: Tensor, attn_mask: Optional[Tensor] = None,
+                key_padding_mask: Optional[Tensor] = None, need_weights: bool = True):
 
-    def forward(self, query: Tensor, key: Tensor, value: Tensor, key_padding_mask: Optional[Tensor] = None,
-                need_weights: bool = True, attn_mask: Optional[Tensor] = None):
-        '''
-        key_padding_mask: If specified, a mask of shape :math:`(N, S)` indicating which elements within ``key``
-            to ignore for the purpose of attention (i.e. treat as "padding"). Binary and byte masks are supported.
-            For a binary mask, a ``True`` value indicates that the corresponding ``key`` value will be ignored for
-            the purpose of attention. For a byte mask, a non-zero value indicates that the corresponding ``key``
-            value will be ignored.
-        '''
+        r"""
+
+        Args:
+            query:
+            key:
+            value:
+            attn_mask:
+            key_padding_mask:
+            need_weights:
+
+        Returns:
+
+        """
+        # TODO: Understand and form attention mask to give scaled_dot_product_attention.
 
         num_heads = self.num_heads
         head_dim = self.head_dim
@@ -276,25 +296,30 @@ class MultiheadAttention(Module):
         # key: (src_len, bs, embed_dim)
         # value: (src_len, bs, embed_dim)
 
-        tgt_len, bs, embed_dim = query.shape
+        tgt_len, bsz, embed_dim = query.shape
         src_len = key.size(0)
 
         q = self.q_proj_weight(query) # (query_len, bs, heads * kdim)
         k = self.k_proj_weight(key)
         v = self.v_proj_weight(value)
 
-        bsz = q.size(1)
         # split embedding vectors into nheads pieces
-        q.contiguous().view(tgt_len, bsz * num_heads, head_dim).transpose(0, 1)
-        k.contiguous().view(src_len, bsz * num_heads, head_dim).transpose(0, 1)
-        v.contiguous().view(src_len, bsz * num_heads, head_dim).transpose(0, 1)
+        q = q.contiguous().view(tgt_len, bsz * num_heads, head_dim).transpose(0, 1)
+        k = k.contiguous().view(src_len, bsz * num_heads, head_dim).transpose(0, 1)
+        v = v.contiguous().view(src_len, bsz * num_heads, head_dim).transpose(0, 1)
         # q: (bsz * nheads, tgt_len, head_dim)
         # k: (bsz * nheads, src_len, head_dim)
         # v: (bsz * nheads, src_len, head_dim)
 
-        attn_output, attn_output_weights = _scaled_dot_product_attention(q, k, v, dropout_p=self.dropout_p) # attention_mask
-        # should be replaced with
-        # attn_output, attn = _scaled_dot_product_attention(q, k, v, attn_mask, , dropout_p=self.dropout_p)
+        if key_padding_mask is not None:
+            key_padding_mask = key_padding_mask.view(bsz, 1, 1, src_len). \
+                expand(-1, num_heads, -1, -1).reshape(bsz * num_heads, 1, src_len)
+            if attn_mask is None:
+                attn_mask = key_padding_mask
+            else:
+                attn_mask = attn_mask.logical_or(key_padding_mask)
+
+        attn_output, attn_output_weights = _scaled_dot_product_attention(q, k, v, attn_mask, self.dropout_p)
         # attn_output: (bsz * nheads, tgt_len, head_dim)
         attn_output = attn_output.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         # attn_output: (tgt_len, bsz, embed_dim=nheads*head_dim)

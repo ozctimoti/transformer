@@ -22,8 +22,9 @@ class PointwiseFeedForwardNetwork(Module):
 
 
 class ViT(Module):
-    def __init__(self, image_res: int, patch_res: int,num_classes: int, latent_dim: int = 768, num_layers: int = 12,
-                 nheads: int = 12, dim_feedforward: int = 3072, nchannels: int = 3, dropout: int = 0.1):
+    def __init__(self, image_res: int, patch_res: int, num_classes: int, latent_dim: int = 768, num_layers: int = 12,
+                 nheads: int = 12, dim_feedforward: int = 3072, nchannels: int = 3, dropout: int = 0.1,
+                 batch_first: bool = True):
         super(ViT, self).__init__()
         assert image_res % patch_res == 0, "Image resolution must be divisible by patch resolution."
         self.image_res = image_res
@@ -33,7 +34,7 @@ class ViT(Module):
         self.patch_dim = nchannels * patch_res**2
         self.patch_embedding = nn.Linear(self.patch_dim, latent_dim)
 
-        self.pe = PositionalEncoding(latent_dim, dropout=dropout, batch_first=True, maxlen=self.npatches+1)
+        self.pe = PositionalEncoding(latent_dim, dropout=dropout, batch_first=batch_first, maxlen=self.npatches+1)
         self.cls_token = nn.Parameter(torch.randn(1, 1, latent_dim))
         encoder_layer = TransformerEncoderLayer(latent_dim, nheads, dim_feedforward, dropout)
         self.transformer = TransformerEncoder(encoder_layer, num_layers)

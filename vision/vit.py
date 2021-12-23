@@ -1,6 +1,6 @@
 import torch
 from torch import nn, Tensor
-from torch.nn import Linear, Module, Parameter
+from torch.nn import Module
 
 from positional_encoding import PositionalEncoding
 
@@ -27,15 +27,23 @@ class ViT(Module):
         self.image_res = image_res
         self.patch_res = patch_res
 
-        npatches = (image_res // patch_res)**2
+        self.npatches = (image_res // patch_res)**2
         self.patch_dim = nchannels * patch_res**2
-        self.patch_embedding = Linear(self.patch_dim, latent_dim)
+        self.patch_embedding = nn.Linear(self.patch_dim, latent_dim)
 
         self.pe = PositionalEncoding(d_model=latent_dim, max_len=nchannels)
         self.cls_token = nn.Parameter(torch.randn(1, 1, latent_dim))
 
     def forward(self, x: Tensor):
-        x = x.view(-1, self.patch_dim)
+        r"""
+
+        Args:
+            x: (bsz, C, H, W)
+
+        Returns:
+
+        """
+        x = x.transpose(1, -1).view(-1, self.npatches, self.patch_dim)
         x = self.patch_embedding(x)
 
 

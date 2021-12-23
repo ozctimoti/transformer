@@ -95,7 +95,6 @@ import math
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-
 # helper Module to convert tensor of input indices into corresponding tensor of token embeddings
 class TokenEmbedding(nn.Module):
     def __init__(self, vocab_size: int, emb_size):

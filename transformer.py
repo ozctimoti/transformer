@@ -323,11 +323,14 @@ class MultiheadAttention(Module):
         # attn_output: (bsz * nheads, tgt_len, head_dim)
         attn_output = attn_output.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         # attn_output: (tgt_len, bsz, embed_dim=nheads*head_dim)
+        if self.batch_first:
+            attn_output = attn_output.transpose(0, 1).contiguous()
+
         attn_output = self.fc(attn_output)
 
         if need_weights:
             # average attention weights over heads
-            attn_output_weights = attn_output_weights.view(bsz, num_heads, tgt_len, src_len)
+            attn_output_weights = attn_output_weights.contiguous().view(bsz, num_heads, tgt_len, src_len)
             return attn_output, attn_output_weights.sum(dim=1) / num_heads
         else:
             return attn_output, None

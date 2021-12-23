@@ -219,12 +219,14 @@ def _scaled_dot_product_attention(
 ) -> Tuple[Tensor, Tensor]:
 
     bsz, tgt_len, E = q.shape
-    q = q / math.sqrt(E)
+    q /= math.sqrt(E)
 
     # (B, Nt, E) x (B, E, Ns) -> (B, Nt, Ns)
-    # (bs * num_heads, tgt_len, embed_dim) x (bs * num_heads, embed_dim, src_len) -> (bs * num_heads, tgt_len, src_len)
+    # (bsz * num_heads, tgt_len, embed_dim) x (bsz * num_heads, embed_dim, src_len) ->
+    # (bsz * num_heads, tgt_len, src_len)
     attn = torch.bmm(q, k.transpose(-2, -1))
 
+    # attn_mask (bsz * num_heads, tgt_len, tgt_len)
     if attn_mask is not None:
         # attn += attn_mask
         attn = attn.masked_fill(attn_mask, float(-1e9))
@@ -283,8 +285,6 @@ class MultiheadAttention(Module):
         Returns:
 
         """
-        # TODO: Understand and form attention mask to give scaled_dot_product_attention.
-
         num_heads = self.num_heads
         head_dim = self.head_dim
 
